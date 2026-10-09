@@ -1,39 +1,37 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
 
-    <IsPackable>false</IsPackable>
-    <IsTestProject>true</IsTestProject>
-  </PropertyGroup>
+		<IsPackable>false</IsPackable>
+		<IsTestProject>true</IsTestProject>
+	</PropertyGroup>
 
-  <ItemGroup>
-    <None Remove="TestData\Колесо зубчатое.m3d" />
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="coverlet.collector" Version="6.0.0" />
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+		<PackageReference Include="xunit" Version="2.5.3" />
+		<PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <Content Include="TestData\Колесо зубчатое.m3d">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
+	<ItemGroup>
+		<Using Include="Xunit" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="6.0.0" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
-    <PackageReference Include="xunit" Version="2.5.3" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
-  </ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\..\src\MiniPdm.Domain\MiniPdm.Domain.csproj" />
+		<ProjectReference Include="..\..\src\MiniPdm.Application\MiniPdm.Application.csproj" />
+		<ProjectReference Include="..\..\src\MiniPdm.Infrastructure\MiniPdm.Infrastructure.csproj" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <Using Include="Xunit" />
-  </ItemGroup>
+	<ItemGroup>
+		<None Remove="TestData\**\*.*" />
 
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\MiniPdm.Domain\MiniPdm.Domain.csproj" />
-    <ProjectReference Include="..\..\src\MiniPdm.Application\MiniPdm.Application.csproj" />
-    <ProjectReference Include="..\..\src\MiniPdm.Infrastructure\MiniPdm.Infrastructure.csproj" />
-  </ItemGroup>
+		<None Include="TestData\**\*.*">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
 
 </Project>
