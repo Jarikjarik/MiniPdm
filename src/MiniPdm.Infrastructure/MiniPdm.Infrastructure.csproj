@@ -1,14 +1,25 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <ItemGroup>
-    <ProjectReference Include="..\MiniPdm.Domain\MiniPdm.Domain.csproj" />
-    <ProjectReference Include="..\MiniPdm.Application\MiniPdm.Application.csproj" />
-  </ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\MiniPdm.Domain\MiniPdm.Domain.csproj" />
+		<ProjectReference Include="..\MiniPdm.Application\MiniPdm.Application.csproj" />
+	</ItemGroup>
 
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Update="Persistence\Scripts\schema.sql">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+
+	<ItemGroup>
+	  <PackageReference Include="Dapper" Version="2.1.89" />
+	  <PackageReference Include="Npgsql" Version="10.0.3" />
+	</ItemGroup>
 
 </Project>

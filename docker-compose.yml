@@ -1,0 +1,25 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: minipdm-postgres
+
+    environment:
+      POSTGRES_DB: minipdm
+      POSTGRES_USER: minipdm
+      POSTGRES_PASSWORD: minipdm_dev
+
+    ports:
+      - "5433:5432"
+
+    volumes:
+      - minipdm-postgres-data:/var/lib/postgresql/data
+      - ./src/MiniPdm.Infrastructure/Persistence/Scripts/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U minipdm -d minipdm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  minipdm-postgres-data:
