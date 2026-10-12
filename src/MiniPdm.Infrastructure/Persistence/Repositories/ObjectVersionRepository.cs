@@ -92,6 +92,33 @@ public sealed class ObjectVersionRepository
                 command);
     }
 
+    public async Task<int> GetNextVersionNumberAsync(
+        IDbSession session,
+        long objectId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        const string sql =
+            """
+            SELECT COALESCE(MAX(version_no), 0) + 1
+            FROM object_version
+            WHERE object_id = @ObjectId;
+            """;
+
+        var command = new CommandDefinition(
+            sql,
+            new
+            {
+                ObjectId = objectId
+            },
+            transaction: session.Transaction,
+            cancellationToken: cancellationToken);
+
+        return await session.Connection.QuerySingleAsync<int>(
+            command);
+    }
+
     public async Task UpdateContentAsync(
         IDbSession session,
         long versionId,

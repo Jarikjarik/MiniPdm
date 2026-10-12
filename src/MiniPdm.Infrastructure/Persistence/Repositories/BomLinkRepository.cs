@@ -1,4 +1,5 @@
 ﻿using Dapper;
+using MiniPdm.Application.Persistence.Models;
 using MiniPdm.Infrastructure.Persistence.Connections;
 using MiniPdm.Infrastructure.Persistence.Models;
 
@@ -50,6 +51,93 @@ public sealed class BomLinkRepository
 
         return await session.Connection.QuerySingleAsync<long>(
             command);
+    }
+
+    public async Task<IReadOnlyList<StoredBomLink>> GetBomLinksAsync(
+        IDbSession session,
+        long parentVersionId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        const string sql =
+            """
+            SELECT
+                child_object_id AS ChildObjectId,
+                quantity AS Quantity
+            FROM bom_link
+            WHERE parent_version_id = @ParentVersionId
+            ORDER BY child_object_id;
+            """;
+
+        var command = new CommandDefinition(
+            sql,
+            new
+            {
+                ParentVersionId = parentVersionId
+            },
+            transaction: session.Transaction,
+            cancellationToken: cancellationToken);
+
+        var links = await session.Connection
+            .QueryAsync<StoredBomLink>(command);
+
+        return links.AsList();
+    }
+
+    public async Task ReplaceBomLinksAsync(
+        IDbSession session,
+        long parentVersionId,
+        IReadOnlyCollection<StoredBomLink> links,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(links);
+
+        if (links.Any(link => link.Quantity <= 0))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(links),
+                "All BOM quantities must be greater than zero.");
+        }
+
+        var duplicateChild = links
+            .GroupBy(link => link.ChildObjectId)
+            .FirstOrDefault(group => group.Count() > 1);
+
+        if (duplicateChild is not null)
+        {
+            throw new InvalidOperationException(
+                $"Child object {duplicateChild.Key} occurs more than once in BOM.");
+        }
+
+        const string deleteSql =
+            """
+            DELETE FROM bom_link
+            WHERE parent_version_id = @ParentVersionId;
+            """;
+
+        var deleteCommand = new CommandDefinition(
+            deleteSql,
+            new
+            {
+                ParentVersionId = parentVersionId
+            },
+            transaction: session.Transaction,
+            cancellationToken: cancellationToken);
+
+        await session.Connection.ExecuteAsync(
+            deleteCommand);
+
+        foreach (var link in links)
+        {
+            await InsertAsync(
+                session,
+                parentVersionId,
+                link.ChildObjectId,
+                link.Quantity,
+                cancellationToken);
+        }
     }
 
     public async Task<IReadOnlyList<BomTreeNodeSnapshot>> GetTreeAsync(
