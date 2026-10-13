@@ -47,74 +47,152 @@ public sealed class CadDocumentValidator
             if (document.Type == ObjectType.Assembly)
             {
                 var invalidComponent = document.Components
-                    .FirstOrDefault(component => component.Quantity <= 0);
+                    .FirstOrDefault(component =>
+                        component.Quantity <= 0);
 
                 if (invalidComponent is not null)
                 {
-                    issues.Add(new CadValidationIssue(
-                        document.FileName,
-                        ImportIssueSeverity.Error,
-                        $"Component '{invalidComponent.FileName}' has invalid quantity {invalidComponent.Quantity}."));
+                    issues.Add(
+                        new CadValidationIssue(
+                            document.FileName,
+                            ImportIssueSeverity.Error,
+                            $"Component '{invalidComponent.FileName}' " +
+                            $"has invalid quantity {invalidComponent.Quantity}."));
 
                     hasError = true;
                 }
 
                 foreach (var component in document.Components)
                 {
-                    if (availableFileNames.Contains(component.FileName))
+                    if (availableFileNames.Contains(
+                            component.FileName))
                     {
                         continue;
                     }
 
-                    issues.Add(new CadValidationIssue(
-                        document.FileName,
-                        ImportIssueSeverity.Error,
-                        $"Referenced component '{component.FileName}' was not found."));
+                    issues.Add(
+                        new CadValidationIssue(
+                            document.FileName,
+                            ImportIssueSeverity.Error,
+                            $"Referenced component '{component.FileName}' " +
+                            "was not found."));
+
+                    hasError = true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(
+                        document.Material))
+                {
+                    issues.Add(
+                        new CadValidationIssue(
+                            document.FileName,
+                            ImportIssueSeverity.Error,
+                            "Assembly must not have material."));
 
                     hasError = true;
                 }
             }
 
-            if (document.Type == ObjectType.StandardPart &&
-                duplicateStandardPartNames.Contains(document.Name))
+            if (document.Type == ObjectType.StandardPart)
             {
-                issues.Add(new CadValidationIssue(
-                    document.FileName,
-                    ImportIssueSeverity.Error,
-                    $"Duplicate standard part name '{document.Name}'."));
+                if (duplicateStandardPartNames.Contains(
+                        document.Name))
+                {
+                    issues.Add(
+                        new CadValidationIssue(
+                            document.FileName,
+                            ImportIssueSeverity.Error,
+                            $"Duplicate standard part name " +
+                            $"'{document.Name}'."));
 
-                hasError = true;
+                    hasError = true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(
+                        document.Designation))
+                {
+                    issues.Add(
+                        new CadValidationIssue(
+                            document.FileName,
+                            ImportIssueSeverity.Error,
+                            "Standard part must not have a designation."));
+
+                    hasError = true;
+                }
+
+                if (document.MassKg is null)
+                {
+                    issues.Add(
+                        new CadValidationIssue(
+                            document.FileName,
+                            ImportIssueSeverity.Error,
+                            "Mass is required for standard part."));
+
+                    hasError = true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(
+                        document.Material))
+                {
+                    issues.Add(
+                        new CadValidationIssue(
+                            document.FileName,
+                            ImportIssueSeverity.Error,
+                            "Standard part must not have material."));
+
+                    hasError = true;
+                }
             }
 
             if (document.Type is ObjectType.Assembly or ObjectType.Part)
             {
-                if (!DesignationValidator.IsValid(document.Designation))
+                if (!DesignationValidator.IsValid(
+                        document.Designation))
                 {
-                    issues.Add(new CadValidationIssue(
-                        document.FileName,
-                        ImportIssueSeverity.Error,
-                        "Invalid designation."));
+                    issues.Add(
+                        new CadValidationIssue(
+                            document.FileName,
+                            ImportIssueSeverity.Error,
+                            "Invalid designation."));
 
                     hasError = true;
                 }
-                else if (duplicateDesignations.Contains(document.Designation!))
+                else if (duplicateDesignations.Contains(
+                             document.Designation!))
                 {
-                    issues.Add(new CadValidationIssue(
-                        document.FileName,
-                        ImportIssueSeverity.Error,
-                        $"Duplicate designation '{document.Designation}'."));
+                    issues.Add(
+                        new CadValidationIssue(
+                            document.FileName,
+                            ImportIssueSeverity.Error,
+                            $"Duplicate designation " +
+                            $"'{document.Designation}'."));
 
                     hasError = true;
                 }
             }
 
-            if (document.Type == ObjectType.Part &&
-                document.MassKg is null)
+            if (document.Type == ObjectType.Part)
             {
-                issues.Add(new CadValidationIssue(
-                    document.FileName,
-                    ImportIssueSeverity.Warning,
-                    "Mass is not specified."));
+                if (string.IsNullOrWhiteSpace(
+                        document.Material))
+                {
+                    issues.Add(
+                        new CadValidationIssue(
+                            document.FileName,
+                            ImportIssueSeverity.Error,
+                            "Material is required for part."));
+
+                    hasError = true;
+                }
+
+                if (document.MassKg is null)
+                {
+                    issues.Add(
+                        new CadValidationIssue(
+                            document.FileName,
+                            ImportIssueSeverity.Warning,
+                            "Mass is not specified."));
+                }
             }
 
             if (!hasError)
@@ -124,9 +202,12 @@ public sealed class CadDocumentValidator
         }
 
         var rejectedFileNames = issues
-            .Where(issue => issue.Severity == ImportIssueSeverity.Error)
-            .Select(issue => issue.FileName)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            .Where(issue =>
+                issue.Severity == ImportIssueSeverity.Error)
+            .Select(issue =>
+                issue.FileName)
+            .ToHashSet(
+                StringComparer.OrdinalIgnoreCase);
 
         var rejectedSomething = true;
 
@@ -135,28 +216,35 @@ public sealed class CadDocumentValidator
             rejectedSomething = false;
 
             var assemblies = acceptedDocuments
-                .Where(document => document.Type == ObjectType.Assembly)
+                .Where(document =>
+                    document.Type == ObjectType.Assembly)
                 .ToArray();
 
             foreach (var assembly in assemblies)
             {
                 var rejectedComponent = assembly.Components
                     .FirstOrDefault(component =>
-                        rejectedFileNames.Contains(component.FileName));
+                        rejectedFileNames.Contains(
+                            component.FileName));
 
                 if (rejectedComponent is null)
                 {
                     continue;
                 }
 
-                acceptedDocuments.Remove(assembly);
+                acceptedDocuments.Remove(
+                    assembly);
 
-                rejectedFileNames.Add(assembly.FileName);
+                rejectedFileNames.Add(
+                    assembly.FileName);
 
-                issues.Add(new CadValidationIssue(
-                    assembly.FileName,
-                    ImportIssueSeverity.Error,
-                    $"Referenced component '{rejectedComponent.FileName}' was rejected."));
+                issues.Add(
+                    new CadValidationIssue(
+                        assembly.FileName,
+                        ImportIssueSeverity.Error,
+                        $"Referenced component " +
+                        $"'{rejectedComponent.FileName}' " +
+                        "was rejected."));
 
                 rejectedSomething = true;
             }

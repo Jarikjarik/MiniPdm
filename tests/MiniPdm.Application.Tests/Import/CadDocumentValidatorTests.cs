@@ -338,4 +338,118 @@ public class CadDocumentValidatorTests
                     "Duplicate standard part name",
                     StringComparison.OrdinalIgnoreCase));
     }
+
+    [Fact]
+    public void Validate_WithPartWithoutMaterial_RejectsDocument()
+    {
+        var document = new CadDocument(
+            1,
+            "Вал.m3d",
+            ObjectType.Part,
+            "ТЕСТ.123456.101",
+            "Вал",
+            null,
+            1.25m,
+            []);
+
+        var validator = new CadDocumentValidator();
+
+        var result = validator.Validate([document]);
+
+        Assert.Empty(result.AcceptedDocuments);
+
+        Assert.Contains(
+            result.Issues,
+            issue =>
+                issue.FileName == "Вал.m3d" &&
+                issue.Severity == ImportIssueSeverity.Error &&
+                issue.Reason.Contains(
+                    "Material is required",
+                    StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Validate_WithStandardPartWithoutMass_RejectsDocument()
+    {
+        var document = new CadDocument(
+            1,
+            "Подшипник.m3d",
+            ObjectType.StandardPart,
+            null,
+            "Подшипник 210",
+            null,
+            null,
+            []);
+
+        var validator = new CadDocumentValidator();
+
+        var result = validator.Validate([document]);
+
+        Assert.Empty(result.AcceptedDocuments);
+
+        Assert.Contains(
+            result.Issues,
+            issue =>
+                issue.FileName == "Подшипник.m3d" &&
+                issue.Severity == ImportIssueSeverity.Error &&
+                issue.Reason.Contains(
+                    "Mass is required",
+                    StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Validate_WithStandardPartDesignation_RejectsDocument()
+    {
+        var document = new CadDocument(
+            1,
+            "Подшипник.m3d",
+            ObjectType.StandardPart,
+            "ТЕСТ.123456.102",
+            "Подшипник 210",
+            null,
+            0.37m,
+            []);
+
+        var validator = new CadDocumentValidator();
+
+        var result = validator.Validate([document]);
+
+        Assert.Empty(result.AcceptedDocuments);
+
+        Assert.Contains(
+            result.Issues,
+            issue =>
+                issue.Severity == ImportIssueSeverity.Error &&
+                issue.Reason.Contains(
+                    "must not have a designation",
+                    StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Validate_WithMaterialForStandardPart_RejectsDocument()
+    {
+        var document = new CadDocument(
+            1,
+            "Подшипник.m3d",
+            ObjectType.StandardPart,
+            null,
+            "Подшипник 210",
+            "Сталь",
+            0.37m,
+            []);
+
+        var validator = new CadDocumentValidator();
+
+        var result = validator.Validate([document]);
+
+        Assert.Empty(result.AcceptedDocuments);
+
+        Assert.Contains(
+            result.Issues,
+            issue =>
+                issue.Severity == ImportIssueSeverity.Error &&
+                issue.Reason.Contains(
+                    "must not have material",
+                    StringComparison.OrdinalIgnoreCase));
+    }
 }

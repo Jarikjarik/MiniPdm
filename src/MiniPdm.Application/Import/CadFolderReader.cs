@@ -2,7 +2,7 @@
 
 namespace MiniPdm.Application.Import;
 
-public sealed class CadFolderReader
+public sealed class CadFolderReader : ICadFolderReader
 {
     private readonly ICadDocumentLocator _documentLocator;
     private readonly ICadDocumentReader _documentReader;

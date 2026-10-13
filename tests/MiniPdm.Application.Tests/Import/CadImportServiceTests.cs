@@ -597,4 +597,310 @@ public class CadImportServiceTests
             return ValueTask.CompletedTask;
         }
     }
+
+    [Fact]
+    public async Task ImportAsync_NewAssemblyWithPart_CreatesBomLink()
+    {
+        var unitOfWork = new FakePdmImportUnitOfWork();
+        var factory = new FakePdmImportUnitOfWorkFactory(unitOfWork);
+        var service = new CadImportService(factory);
+
+        var partDocument = new CadDocument(
+            1,
+            "Вал.m3d",
+            ObjectType.Part,
+            "ТЕСТ.123456.010",
+            "Вал",
+            "Сталь 20",
+            2.50m,
+            Array.Empty<CadComponent>());
+
+        var assemblyDocument = new CadDocument(
+            1,
+            "Редуктор.a3d",
+            ObjectType.Assembly,
+            "ТЕСТ.123456.011",
+            "Редуктор",
+            null,
+            null,
+            new[]
+            {
+            new CadComponent(
+                "Вал.m3d",
+                3)
+            });
+
+        var result = await service.ImportAsync(
+            new[]
+            {
+            assemblyDocument,
+            partDocument
+            },
+            CancellationToken.None);
+
+        Assert.Equal(2, result.CreatedCount);
+        Assert.Equal(0, result.UpdatedCount);
+        Assert.Equal(0, result.NewVersionCount);
+        Assert.Equal(0, result.UnchangedCount);
+
+        var assemblyItem = result.Items.Single(
+            item => item.FileName == "Редуктор.a3d");
+
+        var partItem = result.Items.Single(
+            item => item.FileName == "Вал.m3d");
+
+        var bomLinks = await unitOfWork.GetBomLinksAsync(
+            assemblyItem.VersionId,
+            CancellationToken.None);
+
+        var bomLink = Assert.Single(bomLinks);
+
+        Assert.Equal(
+            partItem.ObjectId,
+            bomLink.ChildObjectId);
+
+        Assert.Equal(
+            3,
+            bomLink.Quantity);
+
+        Assert.Equal(2, unitOfWork.Objects.Count);
+        Assert.Equal(2, unitOfWork.Versions.Count);
+    }
+
+    [Fact]
+    public async Task ImportAsync_ChangedBomOfInWorkAssembly_UpdatesSameVersion()
+    {
+        var unitOfWork = new FakePdmImportUnitOfWork();
+        var factory = new FakePdmImportUnitOfWorkFactory(unitOfWork);
+        var service = new CadImportService(factory);
+
+        var partDocument = new CadDocument(
+            1,
+            "Прокладка.m3d",
+            ObjectType.Part,
+            "ТЕСТ.123456.020",
+            "Прокладка",
+            "Паронит",
+            0.10m,
+            Array.Empty<CadComponent>());
+
+        var originalAssembly = new CadDocument(
+            1,
+            "Крышка.a3d",
+            ObjectType.Assembly,
+            "ТЕСТ.123456.021",
+            "Крышка в сборе",
+            null,
+            null,
+            new[]
+            {
+            new CadComponent(
+                "Прокладка.m3d",
+                3)
+            });
+
+        var firstResult = await service.ImportAsync(
+            new[]
+            {
+            originalAssembly,
+            partDocument
+            },
+            CancellationToken.None);
+
+        var firstAssemblyItem = firstResult.Items.Single(
+            item => item.FileName == "Крышка.a3d");
+
+        var updatedAssembly = new CadDocument(
+            1,
+            "Крышка.a3d",
+            ObjectType.Assembly,
+            "ТЕСТ.123456.021",
+            "Крышка в сборе",
+            null,
+            null,
+            new[]
+            {
+            new CadComponent(
+                "Прокладка.m3d",
+                4)
+            });
+
+        var secondResult = await service.ImportAsync(
+            new[]
+            {
+            updatedAssembly,
+            partDocument
+            },
+            CancellationToken.None);
+
+        var secondAssemblyItem = secondResult.Items.Single(
+            item => item.FileName == "Крышка.a3d");
+
+        var secondPartItem = secondResult.Items.Single(
+            item => item.FileName == "Прокладка.m3d");
+
+        Assert.Equal(
+            CadPersistenceAction.Updated,
+            secondAssemblyItem.Action);
+
+        Assert.Equal(
+            CadPersistenceAction.Unchanged,
+            secondPartItem.Action);
+
+        Assert.Equal(
+            firstAssemblyItem.VersionId,
+            secondAssemblyItem.VersionId);
+
+        var assemblyVersions = unitOfWork.Versions
+            .Where(version =>
+                version.ObjectId == secondAssemblyItem.ObjectId)
+            .ToArray();
+
+        var assemblyVersion = Assert.Single(
+            assemblyVersions);
+
+        Assert.Equal(
+            1,
+            assemblyVersion.VersionNumber);
+
+        Assert.Equal(
+            VersionState.InWork,
+            assemblyVersion.State);
+
+        var bomLinks = await unitOfWork.GetBomLinksAsync(
+            secondAssemblyItem.VersionId,
+            CancellationToken.None);
+
+        var bomLink = Assert.Single(
+            bomLinks);
+
+        Assert.Equal(
+            4,
+            bomLink.Quantity);
+    }
+
+    [Fact]
+    public async Task ImportAsync_ChangedBomOfApprovedAssembly_CreatesNewVersion()
+    {
+        var unitOfWork = new FakePdmImportUnitOfWork();
+        var factory = new FakePdmImportUnitOfWorkFactory(unitOfWork);
+        var service = new CadImportService(factory);
+
+        var partDocument = new CadDocument(
+            1,
+            "Прокладка регулировочная.m3d",
+            ObjectType.Part,
+            "ТЕСТ.123456.030",
+            "Прокладка регулировочная",
+            "Паронит",
+            0.15m,
+            Array.Empty<CadComponent>());
+
+        var originalAssembly = new CadDocument(
+            1,
+            "Крышка подшипника.a3d",
+            ObjectType.Assembly,
+            "ТЕСТ.123456.031",
+            "Крышка подшипника в сборе",
+            null,
+            null,
+            new[]
+            {
+            new CadComponent(
+                "Прокладка регулировочная.m3d",
+                3)
+            });
+
+        var firstResult = await service.ImportAsync(
+            new[]
+            {
+            originalAssembly,
+            partDocument
+            },
+            CancellationToken.None);
+
+        var firstAssemblyItem = firstResult.Items.Single(
+            item => item.FileName == "Крышка подшипника.a3d");
+
+        unitOfWork.SetVersionState(
+            firstAssemblyItem.VersionId,
+            VersionState.Approved);
+
+        var updatedAssembly = new CadDocument(
+            1,
+            "Крышка подшипника.a3d",
+            ObjectType.Assembly,
+            "ТЕСТ.123456.031",
+            "Крышка подшипника в сборе",
+            null,
+            null,
+            new[]
+            {
+            new CadComponent(
+                "Прокладка регулировочная.m3d",
+                4)
+            });
+
+        var secondResult = await service.ImportAsync(
+            new[]
+            {
+            updatedAssembly,
+            partDocument
+            },
+            CancellationToken.None);
+
+        var secondAssemblyItem = secondResult.Items.Single(
+            item => item.FileName == "Крышка подшипника.a3d");
+
+        Assert.Equal(
+            CadPersistenceAction.NewVersion,
+            secondAssemblyItem.Action);
+
+        Assert.NotEqual(
+            firstAssemblyItem.VersionId,
+            secondAssemblyItem.VersionId);
+
+        var assemblyVersions = unitOfWork.Versions
+            .Where(version =>
+                version.ObjectId == secondAssemblyItem.ObjectId)
+            .OrderBy(version =>
+                version.VersionNumber)
+            .ToArray();
+
+        Assert.Equal(
+            2,
+            assemblyVersions.Length);
+
+        Assert.Equal(
+            1,
+            assemblyVersions[0].VersionNumber);
+
+        Assert.Equal(
+            VersionState.Approved,
+            assemblyVersions[0].State);
+
+        Assert.Equal(
+            2,
+            assemblyVersions[1].VersionNumber);
+
+        Assert.Equal(
+            VersionState.InWork,
+            assemblyVersions[1].State);
+
+        var oldBom = await unitOfWork.GetBomLinksAsync(
+            firstAssemblyItem.VersionId,
+            CancellationToken.None);
+
+        var newBom = await unitOfWork.GetBomLinksAsync(
+            secondAssemblyItem.VersionId,
+            CancellationToken.None);
+
+        Assert.Equal(
+            3,
+            Assert.Single(oldBom).Quantity);
+
+        Assert.Equal(
+            4,
+            Assert.Single(newBom).Quantity);
+    }
 }

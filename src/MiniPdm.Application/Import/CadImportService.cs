@@ -5,7 +5,7 @@ using MiniPdm.Domain.Enums;
 
 namespace MiniPdm.Application.Import;
 
-public sealed class CadImportService
+public sealed class CadImportService : ICadPersistenceImporter
 {
     private readonly IPdmImportUnitOfWorkFactory _unitOfWorkFactory;
 
