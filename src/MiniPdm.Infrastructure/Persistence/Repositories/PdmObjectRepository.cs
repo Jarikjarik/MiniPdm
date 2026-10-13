@@ -86,8 +86,9 @@ public sealed class PdmObjectRepository
             transaction: session.Transaction,
             cancellationToken: cancellationToken);
 
-        return await session.Connection.QuerySingleOrDefaultAsync<long?>(
-            command);
+        return await session.Connection
+            .QuerySingleOrDefaultAsync<long?>(
+                command);
     }
 
     public async Task<PdmObjectSnapshot?> FindAsync(
@@ -164,8 +165,9 @@ public sealed class PdmObjectRepository
             transaction: session.Transaction,
             cancellationToken: cancellationToken);
 
-        var affectedRows = await session.Connection.ExecuteAsync(
-            command);
+        var affectedRows =
+            await session.Connection.ExecuteAsync(
+                command);
 
         if (affectedRows != 1)
         {
@@ -184,14 +186,23 @@ public sealed class PdmObjectRepository
 
         const string sql =
             """
-            UPDATE pdm_object
+            UPDATE pdm_object object
             SET current_version_id = @VersionId
-            WHERE id = @ObjectId
-              AND EXISTS (
+            WHERE object.id = @ObjectId
+              AND EXISTS
+              (
                   SELECT 1
-                  FROM object_version
-                  WHERE id = @VersionId
-                    AND object_id = @ObjectId
+                  FROM object_version requested
+                  WHERE requested.id = @VersionId
+                    AND requested.object_id = object.id
+                    AND requested.state <> 'Cancelled'
+                    AND requested.version_no =
+                    (
+                        SELECT MAX(candidate.version_no)
+                        FROM object_version candidate
+                        WHERE candidate.object_id = object.id
+                          AND candidate.state <> 'Cancelled'
+                    )
               );
             """;
 
@@ -205,14 +216,60 @@ public sealed class PdmObjectRepository
             transaction: session.Transaction,
             cancellationToken: cancellationToken);
 
-        var affectedRows = await session.Connection.ExecuteAsync(
-            command);
+        var affectedRows =
+            await session.Connection.ExecuteAsync(
+                command);
 
         if (affectedRows != 1)
         {
             throw new InvalidOperationException(
-                $"PDM object with id {objectId} was not found, " +
-                $"or version {versionId} does not belong to it.");
+                $"Version {versionId} cannot be set as current " +
+                $"for object {objectId}. " +
+                "The version must belong to the object, " +
+                "must not be Cancelled, and must be the latest " +
+                "non-cancelled version.");
+        }
+    }
+
+    public async Task RefreshCurrentVersionAsync(
+        IDbSession session,
+        long objectId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        const string sql =
+            """
+            UPDATE pdm_object
+            SET current_version_id =
+            (
+                SELECT version.id
+                FROM object_version version
+                WHERE version.object_id = @ObjectId
+                  AND version.state <> 'Cancelled'
+                ORDER BY version.version_no DESC
+                LIMIT 1
+            )
+            WHERE id = @ObjectId;
+            """;
+
+        var command = new CommandDefinition(
+            sql,
+            new
+            {
+                ObjectId = objectId
+            },
+            transaction: session.Transaction,
+            cancellationToken: cancellationToken);
+
+        var affectedRows =
+            await session.Connection.ExecuteAsync(
+                command);
+
+        if (affectedRows != 1)
+        {
+            throw new InvalidOperationException(
+                $"PDM object with id {objectId} was not found.");
         }
     }
 }

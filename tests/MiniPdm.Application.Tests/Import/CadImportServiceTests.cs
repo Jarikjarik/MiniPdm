@@ -3,6 +3,7 @@ using MiniPdm.Application.Import;
 using MiniPdm.Application.Persistence;
 using MiniPdm.Application.Persistence.Models;
 using MiniPdm.Domain.Enums;
+using MiniPdm.Domain.Rules;
 
 namespace MiniPdm.Application.Tests.Import;
 
@@ -295,309 +296,6 @@ public class CadImportServiceTests
             version2.Id);
     }
 
-    private sealed class FakePdmImportUnitOfWorkFactory
-        : IPdmImportUnitOfWorkFactory
-    {
-        private readonly IPdmImportUnitOfWork _unitOfWork;
-
-        public FakePdmImportUnitOfWorkFactory(
-            IPdmImportUnitOfWork unitOfWork)
-        {
-            _unitOfWork = unitOfWork;
-        }
-
-        public Task<IPdmImportUnitOfWork> BeginAsync(
-            CancellationToken cancellationToken)
-        {
-            return Task.FromResult(_unitOfWork);
-        }
-    }
-
-    private sealed class FakePdmImportUnitOfWork
-        : IPdmImportUnitOfWork
-    {
-        private readonly Dictionary<long, StoredPdmObject> _objects = [];
-
-        private readonly Dictionary<long, List<StoredObjectVersion>>
-            _versionsByObject = [];
-
-        private readonly Dictionary<long, long>
-            _currentVersionByObject = [];
-
-        private readonly Dictionary<long, List<StoredBomLink>>
-            _bomByVersion = [];
-
-        private long _nextObjectId = 1;
-        private long _nextVersionId = 1;
-
-        public IReadOnlyCollection<StoredPdmObject> Objects =>
-            _objects.Values.ToArray();
-
-        public IReadOnlyCollection<StoredObjectVersion> Versions =>
-            _versionsByObject.Values
-                .SelectMany(versions => versions)
-                .ToArray();
-
-        public bool Committed { get; private set; }
-
-        public bool RolledBack { get; private set; }
-
-        public Task<StoredPdmObject?> FindObjectAsync(
-            ObjectType objectType,
-            string? designation,
-            string name,
-            CancellationToken cancellationToken)
-        {
-            StoredPdmObject? result;
-
-            if (objectType == ObjectType.StandardPart)
-            {
-                result = _objects.Values.FirstOrDefault(
-                    item =>
-                        item.ObjectType == ObjectType.StandardPart &&
-                        item.Name == name);
-            }
-            else
-            {
-                result = _objects.Values.FirstOrDefault(
-                    item =>
-                        item.Designation == designation);
-            }
-
-            return Task.FromResult(result);
-        }
-
-        public Task<long> InsertObjectAsync(
-            ObjectType objectType,
-            string? designation,
-            string name,
-            CancellationToken cancellationToken)
-        {
-            var id = _nextObjectId++;
-
-            _objects.Add(
-                id,
-                new StoredPdmObject(
-                    id,
-                    objectType,
-                    designation,
-                    name));
-
-            return Task.FromResult(id);
-        }
-
-        public Task UpdateObjectNameAsync(
-            long objectId,
-            string name,
-            CancellationToken cancellationToken)
-        {
-            var current = _objects[objectId];
-
-            _objects[objectId] =
-                current with
-                {
-                    Name = name
-                };
-
-            return Task.CompletedTask;
-        }
-
-        public Task<StoredObjectVersion?> GetCurrentVersionAsync(
-            long objectId,
-            CancellationToken cancellationToken)
-        {
-            if (!_currentVersionByObject.TryGetValue(
-                    objectId,
-                    out var versionId))
-            {
-                return Task.FromResult<StoredObjectVersion?>(
-                    null);
-            }
-
-            var version = _versionsByObject[objectId]
-                .Single(item => item.Id == versionId);
-
-            return Task.FromResult<StoredObjectVersion?>(
-                version);
-        }
-
-        public Task<int> GetNextVersionNumberAsync(
-            long objectId,
-            CancellationToken cancellationToken)
-        {
-            if (!_versionsByObject.TryGetValue(
-                    objectId,
-                    out var versions) ||
-                versions.Count == 0)
-            {
-                return Task.FromResult(1);
-            }
-
-            return Task.FromResult(
-                versions.Max(
-                    item => item.VersionNumber) + 1);
-        }
-
-        public Task<long> InsertVersionAsync(
-            long objectId,
-            int versionNumber,
-            VersionState state,
-            string? material,
-            decimal? massKg,
-            CancellationToken cancellationToken)
-        {
-            var id = _nextVersionId++;
-
-            var version = new StoredObjectVersion(
-                id,
-                objectId,
-                versionNumber,
-                state,
-                material,
-                massKg);
-
-            if (!_versionsByObject.TryGetValue(
-                    objectId,
-                    out var versions))
-            {
-                versions = [];
-
-                _versionsByObject.Add(
-                    objectId,
-                    versions);
-            }
-
-            versions.Add(version);
-
-            return Task.FromResult(id);
-        }
-
-        public Task UpdateVersionContentAsync(
-            long versionId,
-            string? material,
-            decimal? massKg,
-            CancellationToken cancellationToken)
-        {
-            foreach (var versions in _versionsByObject.Values)
-            {
-                var index = versions.FindIndex(
-                    item => item.Id == versionId);
-
-                if (index < 0)
-                {
-                    continue;
-                }
-
-                var version = versions[index];
-
-                if (version.State != VersionState.InWork)
-                {
-                    throw new InvalidOperationException(
-                        $"Version {versionId} is not InWork.");
-                }
-
-                versions[index] =
-                    version with
-                    {
-                        Material = material,
-                        MassKg = massKg
-                    };
-
-                return Task.CompletedTask;
-            }
-
-            throw new InvalidOperationException(
-                $"Version {versionId} was not found.");
-        }
-
-        public Task SetCurrentVersionAsync(
-            long objectId,
-            long versionId,
-            CancellationToken cancellationToken)
-        {
-            _currentVersionByObject[objectId] =
-                versionId;
-
-            return Task.CompletedTask;
-        }
-
-        public Task<IReadOnlyList<StoredBomLink>>
-            GetBomLinksAsync(
-                long parentVersionId,
-                CancellationToken cancellationToken)
-        {
-            if (!_bomByVersion.TryGetValue(
-                    parentVersionId,
-                    out var links))
-            {
-                return Task.FromResult<IReadOnlyList<StoredBomLink>>(
-                    Array.Empty<StoredBomLink>());
-            }
-
-            return Task.FromResult<IReadOnlyList<StoredBomLink>>(
-                links.ToArray());
-        }
-
-        public Task ReplaceBomLinksAsync(
-            long parentVersionId,
-            IReadOnlyCollection<StoredBomLink> links,
-            CancellationToken cancellationToken)
-        {
-            _bomByVersion[parentVersionId] =
-                links.ToList();
-
-            return Task.CompletedTask;
-        }
-
-        public void SetVersionState(
-            long versionId,
-            VersionState state)
-        {
-            foreach (var versions in _versionsByObject.Values)
-            {
-                var index = versions.FindIndex(
-                    item => item.Id == versionId);
-
-                if (index < 0)
-                {
-                    continue;
-                }
-
-                versions[index] =
-                    versions[index] with
-                    {
-                        State = state
-                    };
-
-                return;
-            }
-
-            throw new InvalidOperationException(
-                $"Version {versionId} was not found.");
-        }
-
-        public Task CommitAsync(
-            CancellationToken cancellationToken)
-        {
-            Committed = true;
-
-            return Task.CompletedTask;
-        }
-
-        public Task RollbackAsync(
-            CancellationToken cancellationToken)
-        {
-            RolledBack = true;
-
-            return Task.CompletedTask;
-        }
-
-        public ValueTask DisposeAsync()
-        {
-            return ValueTask.CompletedTask;
-        }
-    }
-
     [Fact]
     public async Task ImportAsync_NewAssemblyWithPart_CreatesBomLink()
     {
@@ -625,16 +323,16 @@ public class CadImportServiceTests
             null,
             new[]
             {
-            new CadComponent(
-                "Вал.m3d",
-                3)
+                new CadComponent(
+                    "Вал.m3d",
+                    3)
             });
 
         var result = await service.ImportAsync(
             new[]
             {
-            assemblyDocument,
-            partDocument
+                assemblyDocument,
+                partDocument
             },
             CancellationToken.None);
 
@@ -653,7 +351,8 @@ public class CadImportServiceTests
             assemblyItem.VersionId,
             CancellationToken.None);
 
-        var bomLink = Assert.Single(bomLinks);
+        var bomLink = Assert.Single(
+            bomLinks);
 
         Assert.Equal(
             partItem.ObjectId,
@@ -694,16 +393,16 @@ public class CadImportServiceTests
             null,
             new[]
             {
-            new CadComponent(
-                "Прокладка.m3d",
-                3)
+                new CadComponent(
+                    "Прокладка.m3d",
+                    3)
             });
 
         var firstResult = await service.ImportAsync(
             new[]
             {
-            originalAssembly,
-            partDocument
+                originalAssembly,
+                partDocument
             },
             CancellationToken.None);
 
@@ -720,16 +419,16 @@ public class CadImportServiceTests
             null,
             new[]
             {
-            new CadComponent(
-                "Прокладка.m3d",
-                4)
+                new CadComponent(
+                    "Прокладка.m3d",
+                    4)
             });
 
         var secondResult = await service.ImportAsync(
             new[]
             {
-            updatedAssembly,
-            partDocument
+                updatedAssembly,
+                partDocument
             },
             CancellationToken.None);
 
@@ -806,16 +505,16 @@ public class CadImportServiceTests
             null,
             new[]
             {
-            new CadComponent(
-                "Прокладка регулировочная.m3d",
-                3)
+                new CadComponent(
+                    "Прокладка регулировочная.m3d",
+                    3)
             });
 
         var firstResult = await service.ImportAsync(
             new[]
             {
-            originalAssembly,
-            partDocument
+                originalAssembly,
+                partDocument
             },
             CancellationToken.None);
 
@@ -836,16 +535,16 @@ public class CadImportServiceTests
             null,
             new[]
             {
-            new CadComponent(
-                "Прокладка регулировочная.m3d",
-                4)
+                new CadComponent(
+                    "Прокладка регулировочная.m3d",
+                    4)
             });
 
         var secondResult = await service.ImportAsync(
             new[]
             {
-            updatedAssembly,
-            partDocument
+                updatedAssembly,
+                partDocument
             },
             CancellationToken.None);
 
@@ -902,5 +601,544 @@ public class CadImportServiceTests
         Assert.Equal(
             4,
             Assert.Single(newBom).Quantity);
+    }
+
+    [Fact]
+    public async Task ImportAsync_WhenAllPreviousVersionsAreCancelled_CreatesNextVersionNumber()
+    {
+        var unitOfWork = new FakePdmImportUnitOfWork();
+        var factory = new FakePdmImportUnitOfWorkFactory(unitOfWork);
+        var service = new CadImportService(factory);
+
+        var originalDocument = new CadDocument(
+            1,
+            "Вал отмененный.m3d",
+            ObjectType.Part,
+            "ТЕСТ.123456.040",
+            "Вал отмененный",
+            "Сталь 45",
+            1.25m,
+            Array.Empty<CadComponent>());
+
+        var firstResult = await service.ImportAsync(
+            new[] { originalDocument },
+            CancellationToken.None);
+
+        var firstItem = Assert.Single(
+            firstResult.Items);
+
+        unitOfWork.SetVersionState(
+            firstItem.VersionId,
+            VersionState.Cancelled);
+
+        var currentAfterCancellation =
+            await unitOfWork.GetCurrentVersionAsync(
+                firstItem.ObjectId,
+                CancellationToken.None);
+
+        Assert.Null(
+            currentAfterCancellation);
+
+        var updatedDocument = new CadDocument(
+            1,
+            "Вал отмененный.m3d",
+            ObjectType.Part,
+            "ТЕСТ.123456.040",
+            "Вал отмененный",
+            "Сталь 45",
+            1.30m,
+            Array.Empty<CadComponent>());
+
+        var secondResult = await service.ImportAsync(
+            new[] { updatedDocument },
+            CancellationToken.None);
+
+        var secondItem = Assert.Single(
+            secondResult.Items);
+
+        Assert.Equal(
+            CadPersistenceAction.NewVersion,
+            secondItem.Action);
+
+        Assert.Equal(
+            firstItem.ObjectId,
+            secondItem.ObjectId);
+
+        Assert.NotEqual(
+            firstItem.VersionId,
+            secondItem.VersionId);
+
+        var versions = unitOfWork.Versions
+            .Where(version =>
+                version.ObjectId == firstItem.ObjectId)
+            .OrderBy(version =>
+                version.VersionNumber)
+            .ToArray();
+
+        Assert.Equal(
+            2,
+            versions.Length);
+
+        Assert.Equal(
+            1,
+            versions[0].VersionNumber);
+
+        Assert.Equal(
+            VersionState.Cancelled,
+            versions[0].State);
+
+        Assert.Equal(
+            2,
+            versions[1].VersionNumber);
+
+        Assert.Equal(
+            VersionState.InWork,
+            versions[1].State);
+
+        Assert.Equal(
+            1.30m,
+            versions[1].MassKg);
+
+        var currentVersion =
+            await unitOfWork.GetCurrentVersionAsync(
+                firstItem.ObjectId,
+                CancellationToken.None);
+
+        Assert.NotNull(
+            currentVersion);
+
+        Assert.Equal(
+            2,
+            currentVersion!.VersionNumber);
+
+        Assert.Equal(
+            secondItem.VersionId,
+            currentVersion.Id);
+    }
+
+    private sealed class FakePdmImportUnitOfWorkFactory
+        : IPdmImportUnitOfWorkFactory
+    {
+        private readonly IPdmImportUnitOfWork _unitOfWork;
+
+        public FakePdmImportUnitOfWorkFactory(
+            IPdmImportUnitOfWork unitOfWork)
+        {
+            _unitOfWork = unitOfWork;
+        }
+
+        public Task<IPdmImportUnitOfWork> BeginAsync(
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(
+                _unitOfWork);
+        }
+    }
+
+    private sealed class FakePdmImportUnitOfWork
+        : IPdmImportUnitOfWork
+    {
+        private readonly Dictionary<long, StoredPdmObject>
+            _objects = [];
+
+        private readonly Dictionary<long, List<StoredObjectVersion>>
+            _versionsByObject = [];
+
+        private readonly Dictionary<long, long>
+            _currentVersionByObject = [];
+
+        private readonly Dictionary<long, List<StoredBomLink>>
+            _bomByVersion = [];
+
+        private long _nextObjectId = 1;
+        private long _nextVersionId = 1;
+
+        public IReadOnlyCollection<StoredPdmObject> Objects =>
+            _objects.Values.ToArray();
+
+        public IReadOnlyCollection<StoredObjectVersion> Versions =>
+            _versionsByObject.Values
+                .SelectMany(versions => versions)
+                .ToArray();
+
+        public bool Committed { get; private set; }
+
+        public bool RolledBack { get; private set; }
+
+        public Task<StoredPdmObject?> FindObjectAsync(
+            ObjectType objectType,
+            string? designation,
+            string name,
+            CancellationToken cancellationToken)
+        {
+            StoredPdmObject? result;
+
+            if (objectType == ObjectType.StandardPart)
+            {
+                result = _objects.Values.FirstOrDefault(
+                    item =>
+                        item.ObjectType == ObjectType.StandardPart &&
+                        item.Name == name);
+            }
+            else
+            {
+                result = _objects.Values.FirstOrDefault(
+                    item =>
+                        item.Designation == designation);
+            }
+
+            return Task.FromResult(
+                result);
+        }
+
+        public Task<long> InsertObjectAsync(
+            ObjectType objectType,
+            string? designation,
+            string name,
+            CancellationToken cancellationToken)
+        {
+            var id = _nextObjectId++;
+
+            _objects.Add(
+                id,
+                new StoredPdmObject(
+                    id,
+                    objectType,
+                    designation,
+                    name));
+
+            return Task.FromResult(
+                id);
+        }
+
+        public Task UpdateObjectNameAsync(
+            long objectId,
+            string name,
+            CancellationToken cancellationToken)
+        {
+            var current = _objects[objectId];
+
+            _objects[objectId] =
+                current with
+                {
+                    Name = name
+                };
+
+            return Task.CompletedTask;
+        }
+
+        public Task<StoredObjectVersion?> GetVersionAsync(
+            long versionId,
+            CancellationToken cancellationToken)
+        {
+            var version = _versionsByObject.Values
+                .SelectMany(versions => versions)
+                .FirstOrDefault(item =>
+                    item.Id == versionId);
+
+            return Task.FromResult<StoredObjectVersion?>(
+                version);
+        }
+
+        public Task<StoredObjectVersion?> GetCurrentVersionAsync(
+            long objectId,
+            CancellationToken cancellationToken)
+        {
+            if (!_currentVersionByObject.TryGetValue(
+                    objectId,
+                    out var versionId))
+            {
+                return Task.FromResult<StoredObjectVersion?>(
+                    null);
+            }
+
+            var version = _versionsByObject[objectId]
+                .Single(item =>
+                    item.Id == versionId);
+
+            return Task.FromResult<StoredObjectVersion?>(
+                version);
+        }
+
+        public Task<int> GetNextVersionNumberAsync(
+            long objectId,
+            CancellationToken cancellationToken)
+        {
+            if (!_versionsByObject.TryGetValue(
+                    objectId,
+                    out var versions) ||
+                versions.Count == 0)
+            {
+                return Task.FromResult(1);
+            }
+
+            return Task.FromResult(
+                versions.Max(item =>
+                    item.VersionNumber) + 1);
+        }
+
+        public Task<long> InsertVersionAsync(
+            long objectId,
+            int versionNumber,
+            VersionState state,
+            string? material,
+            decimal? massKg,
+            CancellationToken cancellationToken)
+        {
+            var id = _nextVersionId++;
+
+            var version = new StoredObjectVersion(
+                id,
+                objectId,
+                versionNumber,
+                state,
+                material,
+                massKg);
+
+            if (!_versionsByObject.TryGetValue(
+                    objectId,
+                    out var versions))
+            {
+                versions = [];
+
+                _versionsByObject.Add(
+                    objectId,
+                    versions);
+            }
+
+            versions.Add(
+                version);
+
+            return Task.FromResult(
+                id);
+        }
+
+        public Task UpdateVersionContentAsync(
+            long versionId,
+            string? material,
+            decimal? massKg,
+            CancellationToken cancellationToken)
+        {
+            foreach (var versions in _versionsByObject.Values)
+            {
+                var index = versions.FindIndex(
+                    item =>
+                        item.Id == versionId);
+
+                if (index < 0)
+                {
+                    continue;
+                }
+
+                var version = versions[index];
+
+                if (version.State != VersionState.InWork)
+                {
+                    throw new InvalidOperationException(
+                        $"Version {versionId} is not InWork.");
+                }
+
+                versions[index] =
+                    version with
+                    {
+                        Material = material,
+                        MassKg = massKg
+                    };
+
+                return Task.CompletedTask;
+            }
+
+            throw new InvalidOperationException(
+                $"Version {versionId} was not found.");
+        }
+
+        public Task ChangeVersionStateAsync(
+            long versionId,
+            VersionState currentState,
+            VersionState newState,
+            CancellationToken cancellationToken)
+        {
+            if (!VersionStateTransitionRules.CanTransition(
+                    currentState,
+                    newState))
+            {
+                throw new InvalidOperationException(
+                    $"Transition from {currentState} " +
+                    $"to {newState} is not allowed.");
+            }
+
+            foreach (var versions in _versionsByObject.Values)
+            {
+                var index = versions.FindIndex(
+                    item =>
+                        item.Id == versionId);
+
+                if (index < 0)
+                {
+                    continue;
+                }
+
+                var version = versions[index];
+
+                if (version.State != currentState)
+                {
+                    throw new InvalidOperationException(
+                        $"Version {versionId} is not in state " +
+                        $"{currentState}.");
+                }
+
+                versions[index] =
+                    version with
+                    {
+                        State = newState
+                    };
+
+                return Task.CompletedTask;
+            }
+
+            throw new InvalidOperationException(
+                $"Version {versionId} was not found.");
+        }
+
+        public Task SetCurrentVersionAsync(
+            long objectId,
+            long versionId,
+            CancellationToken cancellationToken)
+        {
+            var version = _versionsByObject[objectId]
+                .Single(item =>
+                    item.Id == versionId);
+
+            if (version.State == VersionState.Cancelled)
+            {
+                throw new InvalidOperationException(
+                    "Cancelled version cannot be current.");
+            }
+
+            _currentVersionByObject[objectId] =
+                versionId;
+
+            return Task.CompletedTask;
+        }
+
+        public Task RefreshCurrentVersionAsync(
+            long objectId,
+            CancellationToken cancellationToken)
+        {
+            if (!_versionsByObject.TryGetValue(
+                    objectId,
+                    out var versions))
+            {
+                _currentVersionByObject.Remove(
+                    objectId);
+
+                return Task.CompletedTask;
+            }
+
+            var current = versions
+                .Where(version =>
+                    version.State != VersionState.Cancelled)
+                .OrderByDescending(version =>
+                    version.VersionNumber)
+                .FirstOrDefault();
+
+            if (current is null)
+            {
+                _currentVersionByObject.Remove(
+                    objectId);
+            }
+            else
+            {
+                _currentVersionByObject[objectId] =
+                    current.Id;
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<StoredBomLink>>
+            GetBomLinksAsync(
+                long parentVersionId,
+                CancellationToken cancellationToken)
+        {
+            if (!_bomByVersion.TryGetValue(
+                    parentVersionId,
+                    out var links))
+            {
+                return Task.FromResult<IReadOnlyList<StoredBomLink>>(
+                    Array.Empty<StoredBomLink>());
+            }
+
+            return Task.FromResult<IReadOnlyList<StoredBomLink>>(
+                links.ToArray());
+        }
+
+        public Task ReplaceBomLinksAsync(
+            long parentVersionId,
+            IReadOnlyCollection<StoredBomLink> links,
+            CancellationToken cancellationToken)
+        {
+            _bomByVersion[parentVersionId] =
+                links.ToList();
+
+            return Task.CompletedTask;
+        }
+
+        public void SetVersionState(
+            long versionId,
+            VersionState state)
+        {
+            foreach (var pair in _versionsByObject)
+            {
+                var versions = pair.Value;
+
+                var index = versions.FindIndex(
+                    item =>
+                        item.Id == versionId);
+
+                if (index < 0)
+                {
+                    continue;
+                }
+
+                versions[index] =
+                    versions[index] with
+                    {
+                        State = state
+                    };
+
+                RefreshCurrentVersionAsync(
+                        pair.Key,
+                        CancellationToken.None)
+                    .GetAwaiter()
+                    .GetResult();
+
+                return;
+            }
+
+            throw new InvalidOperationException(
+                $"Version {versionId} was not found.");
+        }
+
+        public Task CommitAsync(
+            CancellationToken cancellationToken)
+        {
+            Committed = true;
+
+            return Task.CompletedTask;
+        }
+
+        public Task RollbackAsync(
+            CancellationToken cancellationToken)
+        {
+            RolledBack = true;
+
+            return Task.CompletedTask;
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            return ValueTask.CompletedTask;
+        }
     }
 }

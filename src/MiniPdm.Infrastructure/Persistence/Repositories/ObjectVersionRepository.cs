@@ -1,5 +1,6 @@
 ﻿using Dapper;
 using MiniPdm.Domain.Enums;
+using MiniPdm.Domain.Rules;
 using MiniPdm.Infrastructure.Persistence.Connections;
 using MiniPdm.Infrastructure.Persistence.Models;
 
@@ -52,6 +53,42 @@ public sealed class ObjectVersionRepository
 
         return await session.Connection.QuerySingleAsync<long>(
             command);
+    }
+
+    public async Task<ObjectVersionSnapshot?> GetByIdAsync(
+        IDbSession session,
+        long versionId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        const string sql =
+            """
+            SELECT
+                id,
+                object_id AS ObjectId,
+                version_no AS VersionNumber,
+                state,
+                material,
+                mass_kg AS MassKg,
+                created_at AS CreatedAt
+            FROM object_version
+            WHERE id = @VersionId
+            LIMIT 1;
+            """;
+
+        var command = new CommandDefinition(
+            sql,
+            new
+            {
+                VersionId = versionId
+            },
+            transaction: session.Transaction,
+            cancellationToken: cancellationToken);
+
+        return await session.Connection
+            .QuerySingleOrDefaultAsync<ObjectVersionSnapshot>(
+                command);
     }
 
     public async Task<ObjectVersionSnapshot?> GetCurrentAsync(
@@ -167,6 +204,14 @@ public sealed class ObjectVersionRepository
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
+
+        if (!VersionStateTransitionRules.CanTransition(
+                currentState,
+                newState))
+        {
+            throw new InvalidOperationException(
+                $"Transition from {currentState} to {newState} is not allowed.");
+        }
 
         const string sql =
             """

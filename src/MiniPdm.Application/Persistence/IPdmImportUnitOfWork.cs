@@ -22,6 +22,10 @@ public interface IPdmImportUnitOfWork : IAsyncDisposable
         string name,
         CancellationToken cancellationToken);
 
+    Task<StoredObjectVersion?> GetVersionAsync(
+        long versionId,
+        CancellationToken cancellationToken);
+
     Task<StoredObjectVersion?> GetCurrentVersionAsync(
         long objectId,
         CancellationToken cancellationToken);
@@ -44,9 +48,19 @@ public interface IPdmImportUnitOfWork : IAsyncDisposable
         decimal? massKg,
         CancellationToken cancellationToken);
 
+    Task ChangeVersionStateAsync(
+        long versionId,
+        VersionState currentState,
+        VersionState newState,
+        CancellationToken cancellationToken);
+
     Task SetCurrentVersionAsync(
         long objectId,
         long versionId,
+        CancellationToken cancellationToken);
+
+    Task RefreshCurrentVersionAsync(
+        long objectId,
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<StoredBomLink>> GetBomLinksAsync(

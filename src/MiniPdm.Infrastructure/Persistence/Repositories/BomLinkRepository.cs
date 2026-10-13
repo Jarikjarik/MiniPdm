@@ -23,34 +23,17 @@ public sealed class BomLinkRepository
                 "Quantity must be greater than zero.");
         }
 
-        const string sql =
-            """
-            INSERT INTO bom_link (
-                parent_version_id,
-                child_object_id,
-                quantity
-            )
-            VALUES (
-                @ParentVersionId,
-                @ChildObjectId,
-                @Quantity
-            )
-            RETURNING id;
-            """;
+        await EnsureEditableAssemblyVersionAsync(
+            session,
+            parentVersionId,
+            cancellationToken);
 
-        var command = new CommandDefinition(
-            sql,
-            new
-            {
-                ParentVersionId = parentVersionId,
-                ChildObjectId = childObjectId,
-                Quantity = quantity
-            },
-            transaction: session.Transaction,
-            cancellationToken: cancellationToken);
-
-        return await session.Connection.QuerySingleAsync<long>(
-            command);
+        return await InsertCoreAsync(
+            session,
+            parentVersionId,
+            childObjectId,
+            quantity,
+            cancellationToken);
     }
 
     public async Task<IReadOnlyList<StoredBomLink>> GetBomLinksAsync(
@@ -80,7 +63,8 @@ public sealed class BomLinkRepository
             cancellationToken: cancellationToken);
 
         var links = await session.Connection
-            .QueryAsync<StoredBomLink>(command);
+            .QueryAsync<StoredBomLink>(
+                command);
 
         return links.AsList();
     }
@@ -94,7 +78,8 @@ public sealed class BomLinkRepository
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(links);
 
-        if (links.Any(link => link.Quantity <= 0))
+        if (links.Any(link =>
+                link.Quantity <= 0))
         {
             throw new ArgumentOutOfRangeException(
                 nameof(links),
@@ -102,14 +87,22 @@ public sealed class BomLinkRepository
         }
 
         var duplicateChild = links
-            .GroupBy(link => link.ChildObjectId)
-            .FirstOrDefault(group => group.Count() > 1);
+            .GroupBy(link =>
+                link.ChildObjectId)
+            .FirstOrDefault(group =>
+                group.Count() > 1);
 
         if (duplicateChild is not null)
         {
             throw new InvalidOperationException(
-                $"Child object {duplicateChild.Key} occurs more than once in BOM.");
+                $"Child object {duplicateChild.Key} " +
+                "occurs more than once in BOM.");
         }
+
+        await EnsureEditableAssemblyVersionAsync(
+            session,
+            parentVersionId,
+            cancellationToken);
 
         const string deleteSql =
             """
@@ -131,7 +124,7 @@ public sealed class BomLinkRepository
 
         foreach (var link in links)
         {
-            await InsertAsync(
+            await InsertCoreAsync(
                 session,
                 parentVersionId,
                 link.ChildObjectId,
@@ -172,7 +165,7 @@ public sealed class BomLinkRepository
                     ON link.parent_version_id = root.current_version_id
                 INNER JOIN pdm_object child
                     ON child.id = link.child_object_id
-                INNER JOIN object_version child_version
+                LEFT JOIN object_version child_version
                     ON child_version.id = child.current_version_id
                 WHERE root.id = @RootObjectId
 
@@ -199,7 +192,7 @@ public sealed class BomLinkRepository
                     ON link.parent_version_id = parent.version_id
                 INNER JOIN pdm_object child
                     ON child.id = link.child_object_id
-                INNER JOIN object_version child_version
+                LEFT JOIN object_version child_version
                     ON child_version.id = child.current_version_id
                 WHERE NOT parent.is_cycle
             )
@@ -219,7 +212,10 @@ public sealed class BomLinkRepository
                 depth AS Depth,
                 is_cycle AS IsCycle
             FROM bom_tree
-            ORDER BY depth, parent_object_id, object_id;
+            ORDER BY
+                depth,
+                parent_object_id,
+                object_id;
             """;
 
         var command = new CommandDefinition(
@@ -232,8 +228,85 @@ public sealed class BomLinkRepository
             cancellationToken: cancellationToken);
 
         var nodes = await session.Connection
-            .QueryAsync<BomTreeNodeSnapshot>(command);
+            .QueryAsync<BomTreeNodeSnapshot>(
+                command);
 
         return nodes.AsList();
+    }
+
+    private static async Task<long> InsertCoreAsync(
+        IDbSession session,
+        long parentVersionId,
+        long childObjectId,
+        int quantity,
+        CancellationToken cancellationToken)
+    {
+        const string sql =
+            """
+            INSERT INTO bom_link (
+                parent_version_id,
+                child_object_id,
+                quantity
+            )
+            VALUES (
+                @ParentVersionId,
+                @ChildObjectId,
+                @Quantity
+            )
+            RETURNING id;
+            """;
+
+        var command = new CommandDefinition(
+            sql,
+            new
+            {
+                ParentVersionId = parentVersionId,
+                ChildObjectId = childObjectId,
+                Quantity = quantity
+            },
+            transaction: session.Transaction,
+            cancellationToken: cancellationToken);
+
+        return await session.Connection.QuerySingleAsync<long>(
+            command);
+    }
+
+    private static async Task EnsureEditableAssemblyVersionAsync(
+        IDbSession session,
+        long parentVersionId,
+        CancellationToken cancellationToken)
+    {
+        const string sql =
+            """
+            SELECT COUNT(*)
+            FROM object_version version
+            INNER JOIN pdm_object object
+                ON object.id = version.object_id
+            WHERE version.id = @ParentVersionId
+              AND version.state = 'InWork'
+              AND object.object_type = 'Assembly';
+            """;
+
+        var command = new CommandDefinition(
+            sql,
+            new
+            {
+                ParentVersionId = parentVersionId
+            },
+            transaction: session.Transaction,
+            cancellationToken: cancellationToken);
+
+        var count =
+            await session.Connection.QuerySingleAsync<int>(
+                command);
+
+        if (count != 1)
+        {
+            throw new InvalidOperationException(
+                $"Version {parentVersionId} cannot be used " +
+                "as an editable BOM parent. " +
+                "The version must exist, belong to an Assembly, " +
+                "and be in InWork state.");
+        }
     }
 }

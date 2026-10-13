@@ -211,10 +211,20 @@ public sealed class CadImportService : ICadPersistenceImporter
 
             if (pending.CurrentVersion is null)
             {
+                var isNewObject =
+                    pending.ExistingObject is null;
+
+                var versionNumber =
+                    isNewObject
+                        ? 1
+                        : await unitOfWork.GetNextVersionNumberAsync(
+                            pending.ObjectId,
+                            cancellationToken);
+
                 var versionId =
                     await unitOfWork.InsertVersionAsync(
                         pending.ObjectId,
-                        1,
+                        versionNumber,
                         VersionState.InWork,
                         desiredMaterial,
                         desiredMass,
@@ -235,7 +245,9 @@ public sealed class CadImportService : ICadPersistenceImporter
                         document.FileName,
                         pending.ObjectId,
                         versionId,
-                        CadPersistenceAction.Created));
+                        isNewObject
+                            ? CadPersistenceAction.Created
+                            : CadPersistenceAction.NewVersion));
 
                 continue;
             }
@@ -329,7 +341,7 @@ public sealed class CadImportService : ICadPersistenceImporter
             {
                 throw new InvalidOperationException(
                     $"Referenced document '{component.FileName}' " +
-                    $"was not provided for import.");
+                    "was not provided for import.");
             }
 
             links.Add(

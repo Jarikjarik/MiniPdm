@@ -10,7 +10,7 @@ public sealed class BomTreeNodeSnapshot
 
     public long ObjectId { get; init; }
 
-    public long VersionId { get; init; }
+    public long? VersionId { get; init; }
 
     public ObjectType ObjectType { get; init; }
 
@@ -18,7 +18,7 @@ public sealed class BomTreeNodeSnapshot
 
     public string Name { get; init; } = string.Empty;
 
-    public VersionState State { get; init; }
+    public VersionState? State { get; init; }
 
     public string? Material { get; init; }
 
@@ -31,4 +31,7 @@ public sealed class BomTreeNodeSnapshot
     public int Depth { get; init; }
 
     public bool IsCycle { get; init; }
+
+    public bool HasCurrentVersion =>
+        VersionId is not null;
 }

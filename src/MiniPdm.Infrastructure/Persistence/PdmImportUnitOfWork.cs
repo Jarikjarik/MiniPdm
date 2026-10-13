@@ -2,6 +2,7 @@
 using MiniPdm.Application.Persistence.Models;
 using MiniPdm.Domain.Enums;
 using MiniPdm.Infrastructure.Persistence.Connections;
+using MiniPdm.Infrastructure.Persistence.Models;
 using MiniPdm.Infrastructure.Persistence.Repositories;
 
 namespace MiniPdm.Infrastructure.Persistence;
@@ -83,6 +84,18 @@ public sealed class PdmImportUnitOfWork : IPdmImportUnitOfWork
             cancellationToken);
     }
 
+    public async Task<StoredObjectVersion?> GetVersionAsync(
+        long versionId,
+        CancellationToken cancellationToken)
+    {
+        var snapshot = await _versionRepository.GetByIdAsync(
+            _session,
+            versionId,
+            cancellationToken);
+
+        return MapVersion(snapshot);
+    }
+
     public async Task<StoredObjectVersion?> GetCurrentVersionAsync(
         long objectId,
         CancellationToken cancellationToken)
@@ -92,23 +105,12 @@ public sealed class PdmImportUnitOfWork : IPdmImportUnitOfWork
             objectId,
             cancellationToken);
 
-        if (snapshot is null)
-        {
-            return null;
-        }
-
-        return new StoredObjectVersion(
-            snapshot.Id,
-            snapshot.ObjectId,
-            snapshot.VersionNumber,
-            snapshot.State,
-            snapshot.Material,
-            snapshot.MassKg);
+        return MapVersion(snapshot);
     }
 
     public Task<int> GetNextVersionNumberAsync(
         long objectId,
-    CancellationToken cancellationToken)
+        CancellationToken cancellationToken)
     {
         return _versionRepository.GetNextVersionNumberAsync(
             _session,
@@ -148,6 +150,20 @@ public sealed class PdmImportUnitOfWork : IPdmImportUnitOfWork
             cancellationToken);
     }
 
+    public Task ChangeVersionStateAsync(
+        long versionId,
+        VersionState currentState,
+        VersionState newState,
+        CancellationToken cancellationToken)
+    {
+        return _versionRepository.ChangeStateAsync(
+            _session,
+            versionId,
+            currentState,
+            newState,
+            cancellationToken);
+    }
+
     public Task SetCurrentVersionAsync(
         long objectId,
         long versionId,
@@ -157,6 +173,16 @@ public sealed class PdmImportUnitOfWork : IPdmImportUnitOfWork
             _session,
             objectId,
             versionId,
+            cancellationToken);
+    }
+
+    public Task RefreshCurrentVersionAsync(
+        long objectId,
+        CancellationToken cancellationToken)
+    {
+        return _objectRepository.RefreshCurrentVersionAsync(
+            _session,
+            objectId,
             cancellationToken);
     }
 
@@ -199,5 +225,22 @@ public sealed class PdmImportUnitOfWork : IPdmImportUnitOfWork
     public ValueTask DisposeAsync()
     {
         return _session.DisposeAsync();
+    }
+
+    private static StoredObjectVersion? MapVersion(
+        ObjectVersionSnapshot? snapshot)
+    {
+        if (snapshot is null)
+        {
+            return null;
+        }
+
+        return new StoredObjectVersion(
+            snapshot.Id,
+            snapshot.ObjectId,
+            snapshot.VersionNumber,
+            snapshot.State,
+            snapshot.Material,
+            snapshot.MassKg);
     }
 }
