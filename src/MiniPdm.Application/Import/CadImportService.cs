@@ -68,10 +68,12 @@ public sealed class CadImportService : ICadPersistenceImporter
 
         foreach (var document in documents)
         {
-            if (result.ContainsKey(document.FileName))
+            if (result.ContainsKey(
+                    document.FileName))
             {
                 throw new InvalidOperationException(
-                    $"Document '{document.FileName}' occurs more than once.");
+                    $"Document '{document.FileName}' " +
+                    "occurs more than once.");
             }
 
             var existingObject =
@@ -95,17 +97,19 @@ public sealed class CadImportService : ICadPersistenceImporter
 
             if (existingObject is null)
             {
-                objectId = await unitOfWork.InsertObjectAsync(
-                    document.Type,
-                    document.Designation,
-                    document.Name,
-                    cancellationToken);
+                objectId =
+                    await unitOfWork.InsertObjectAsync(
+                        document.Type,
+                        document.Designation,
+                        document.Name,
+                        cancellationToken);
 
                 currentVersion = null;
             }
             else
             {
-                objectId = existingObject.Id;
+                objectId =
+                    existingObject.Id;
 
                 currentVersion =
                     await unitOfWork.GetCurrentVersionAsync(
@@ -137,7 +141,8 @@ public sealed class CadImportService : ICadPersistenceImporter
 
         foreach (var pending in pendingDocuments.Values)
         {
-            var document = pending.Document;
+            var document =
+                pending.Document;
 
             var desiredBom =
                 BuildDesiredBom(
@@ -175,9 +180,11 @@ public sealed class CadImportService : ICadPersistenceImporter
                     pending.CurrentVersion.Material,
                     desiredMaterial,
                     StringComparison.Ordinal) ||
-                pending.CurrentVersion.MassKg != desiredMass;
+                pending.CurrentVersion.MassKg !=
+                desiredMass;
 
             var bomChanged =
+                document.Type == ObjectType.Assembly &&
                 !BomEquals(
                     currentBom,
                     desiredBom);
@@ -235,10 +242,13 @@ public sealed class CadImportService : ICadPersistenceImporter
                     versionId,
                     cancellationToken);
 
-                await unitOfWork.ReplaceBomLinksAsync(
-                    versionId,
-                    desiredBom,
-                    cancellationToken);
+                if (document.Type == ObjectType.Assembly)
+                {
+                    await unitOfWork.ReplaceBomLinksAsync(
+                        versionId,
+                        desiredBom,
+                        cancellationToken);
+                }
 
                 results.Add(
                     new CadPersistenceImportItem(
@@ -261,10 +271,13 @@ public sealed class CadImportService : ICadPersistenceImporter
                     desiredMass,
                     cancellationToken);
 
-                await unitOfWork.ReplaceBomLinksAsync(
-                    pending.CurrentVersion.Id,
-                    desiredBom,
-                    cancellationToken);
+                if (document.Type == ObjectType.Assembly)
+                {
+                    await unitOfWork.ReplaceBomLinksAsync(
+                        pending.CurrentVersion.Id,
+                        desiredBom,
+                        cancellationToken);
+                }
 
                 results.Add(
                     new CadPersistenceImportItem(
@@ -298,10 +311,13 @@ public sealed class CadImportService : ICadPersistenceImporter
                     newVersionId,
                     cancellationToken);
 
-                await unitOfWork.ReplaceBomLinksAsync(
-                    newVersionId,
-                    desiredBom,
-                    cancellationToken);
+                if (document.Type == ObjectType.Assembly)
+                {
+                    await unitOfWork.ReplaceBomLinksAsync(
+                        newVersionId,
+                        desiredBom,
+                        cancellationToken);
+                }
 
                 results.Add(
                     new CadPersistenceImportItem(
@@ -331,7 +347,8 @@ public sealed class CadImportService : ICadPersistenceImporter
             return Array.Empty<StoredBomLink>();
         }
 
-        var links = new List<StoredBomLink>();
+        var links =
+            new List<StoredBomLink>();
 
         foreach (var component in document.Components)
         {
@@ -362,15 +379,21 @@ public sealed class CadImportService : ICadPersistenceImporter
             return false;
         }
 
-        var currentOrdered = current
-            .OrderBy(link => link.ChildObjectId)
-            .ThenBy(link => link.Quantity)
-            .ToArray();
+        var currentOrdered =
+            current
+                .OrderBy(link =>
+                    link.ChildObjectId)
+                .ThenBy(link =>
+                    link.Quantity)
+                .ToArray();
 
-        var desiredOrdered = desired
-            .OrderBy(link => link.ChildObjectId)
-            .ThenBy(link => link.Quantity)
-            .ToArray();
+        var desiredOrdered =
+            desired
+                .OrderBy(link =>
+                    link.ChildObjectId)
+                .ThenBy(link =>
+                    link.Quantity)
+                .ToArray();
 
         return currentOrdered.SequenceEqual(
             desiredOrdered);
