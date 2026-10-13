@@ -1,12 +1,12 @@
-﻿using Dapper;
+using Dapper;
 using MiniPdm.Infrastructure.Persistence.Connections;
 
 namespace MiniPdm.IntegrationTests.Persistence;
 
 public class NpgsqlConnectionFactoryTests
 {
-    private const string ConnectionString =
-        "Host=localhost;Port=5433;Database=minipdm;Username=minipdm;Password=minipdm_dev";
+    private static string ConnectionString =>
+        TestDatabase.ConnectionString;
 
     [Fact]
     public async Task OpenConnectionAsync_CanExecuteQuery()

@@ -1,4 +1,4 @@
-﻿using Dapper;
+using Dapper;
 using MiniPdm.Application.Versions;
 using MiniPdm.Domain.Enums;
 using MiniPdm.Infrastructure.Persistence;
@@ -8,8 +8,8 @@ namespace MiniPdm.IntegrationTests.Persistence;
 
 public class VersionStateServiceIntegrationTests
 {
-    private const string ConnectionString =
-        "Host=localhost;Port=5433;Database=minipdm;Username=minipdm;Password=minipdm_dev";
+    private static string ConnectionString =>
+        TestDatabase.ConnectionString;
 
     private const string TestDesignation =
         "ТЕСТ.777777.001";

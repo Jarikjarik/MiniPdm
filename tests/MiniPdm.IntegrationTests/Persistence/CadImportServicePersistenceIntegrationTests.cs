@@ -1,4 +1,4 @@
-﻿using Dapper;
+using Dapper;
 using MiniPdm.Application.Abstractions.Cad;
 using MiniPdm.Application.Import;
 using MiniPdm.Domain.Enums;
@@ -9,9 +9,8 @@ namespace MiniPdm.IntegrationTests.Persistence;
 
 public class CadImportServicePersistenceIntegrationTests
 {
-    private const string ConnectionString =
-        "Host=localhost;Port=5433;Database=minipdm;" +
-        "Username=minipdm;Password=minipdm_dev";
+    private static string ConnectionString =>
+        TestDatabase.ConnectionString;
 
     private const string TestDesignation =
         "ТЕСТ.991001.001";

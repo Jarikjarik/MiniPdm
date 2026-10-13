@@ -1,4 +1,4 @@
-﻿using MiniPdm.Application.Persistence.Models;
+using MiniPdm.Application.Persistence.Models;
 using MiniPdm.Domain.Enums;
 using MiniPdm.Infrastructure.Persistence;
 using MiniPdm.Infrastructure.Persistence.Connections;
@@ -7,8 +7,8 @@ namespace MiniPdm.IntegrationTests.Persistence;
 
 public class PdmImportUnitOfWorkTests
 {
-    private const string ConnectionString =
-        "Host=localhost;Port=5433;Database=minipdm;Username=minipdm;Password=minipdm_dev";
+    private static string ConnectionString =>
+        TestDatabase.ConnectionString;
 
     [Fact]
     public async Task RollbackAsync_RollsBackWholeImportTransaction()

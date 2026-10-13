@@ -1,4 +1,4 @@
-﻿using Dapper;
+using Dapper;
 using MiniPdm.Domain.Enums;
 using MiniPdm.Infrastructure.Persistence.Connections;
 using MiniPdm.Infrastructure.Persistence.Repositories;
@@ -7,8 +7,8 @@ namespace MiniPdm.IntegrationTests.Persistence;
 
 public class PdmObjectRepositoryTests
 {
-    private const string ConnectionString =
-        "Host=localhost;Port=5433;Database=minipdm;Username=minipdm;Password=minipdm_dev";
+    private static string ConnectionString =>
+        TestDatabase.ConnectionString;
 
     [Fact]
     public async Task InsertAsync_PersistsObjectInsideTransaction()
